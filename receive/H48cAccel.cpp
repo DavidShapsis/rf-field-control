@@ -36,11 +36,12 @@ float H48cAccel::readAxis(uint8_t channel) {
   return (axis - vref) * G_PER_COUNT;
 }
 
-void H48cAccel::update() {
+bool H48cAccel::update() {
   unsigned long now = millis();
-  if (now - lastRead_ < READ_INTERVAL_MS) return;
+  if (now - lastRead_ < READ_INTERVAL_MS) return false;
   lastRead_ = now;
   x_ = readAxis(0);
   y_ = readAxis(1);
   z_ = readAxis(2);
+  return true;
 }

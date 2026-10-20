@@ -8,7 +8,8 @@ public:
     : clk_(clkPin), dio_(dioPin), cs_(csPin) {}
 
   void begin();
-  void update();                      // call often; reads at most every READ_INTERVAL_MS
+  bool update();                      // call often; reads at most every READ_INTERVAL_MS,
+                                      // returns true when it took a new reading
 
   float x() const { return x_; }
   float y() const { return y_; }

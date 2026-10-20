@@ -4,19 +4,21 @@
 // FIELD ROBOT (Arduino Uno)
 // Pairs with the field controller over the 433 MHz RF link, runs the commands it receives and
 // reports its gyro, accelerometer and compass readings every time it is polled.
+// For testing it also keeps the tilt LEDs and tilt buzzer from the motion sketch.
 //
 // Needs the FieldLink library (Sketch > Include Library > Add .ZIP Library > FieldLink.zip).
 //
 // Before uploading, set ROBOT_CODE below. Every robot needs a different code (00 to 99).
 //
-// Wiring
-//   RF module      DATA -> D2    T/R -> D4    VIN -> 5V   GND -> GND   PDN, RSSI unconnected
-//   LISY300 gyro   DOUT -> D7    SCLK -> D8   CS -> D12   VDD -> 5V    GND -> GND   ST -> GND
-//   H48C accel     CLK -> A0     DIO -> A1    CS -> A2    VDD -> 5V    VSS -> GND   (0G unconnected)
-//   HM55B compass  DIN and DOUT (tied) -> A3  CLK -> A4   EN -> D3     VDD -> 5V    VSS -> GND
-//   Status LED     built-in LED on D13. Slow blink = not paired, on = paired, flicker = command.
-//   Free for motors later: PWM pins 5, 6, 9, 10 and digital pin 11.
-//   (Pins 3 and 11 cannot do PWM because the radio uses Timer2.)
+// Wiring (same sensor, LED and buzzer pins as the motion sketch)
+//   RF module      DATA -> D5    T/R -> D12   VIN -> 5V   GND -> GND   PDN, RSSI unconnected
+//   H48C accel     CLK -> D2     DIO -> D3    CS -> D4    VDD -> 5V    VSS -> GND   (0G unconnected)
+//   HM55B compass  DIN and DOUT (tied) -> D6  CLK -> D7   EN -> D8     VDD -> 5V    VSS -> GND
+//   LISY300 gyro   DOUT -> D9    SCLK -> D10  CS -> D11   VDD -> 5V    GND -> GND   ST -> GND
+//   Tilt LEDs      left A0, right A1, front A2, back A3 (resistor, LED, GND)
+//   Buzzer         D13
+//   Link LED       optional, A4, active low: 5V -> resistor -> LED -> A4.
+//                  Slow blink = not paired, on = paired, off flicker = command received.
 //   A5 is left unconnected: its noise seeds the random pairing slot.
 //
 // Serial Monitor (optional, for debugging): 115200 baud.
@@ -24,6 +26,7 @@
 // Code layout:
 //   RobotNode          link side: pairing, polls, status replies, failsafe
 //   SensorSuite        gyro + accelerometer + compass, packed into the status reply
+//   TiltFeedback       tilt LEDs and buzzer (testing aid, remove later)
 //   CommandDispatcher  runs each command once, by type number
 //   CommandHandlers    one class per command (add new movements there)
 //   DriveBase          motor interface; DebugDrive just prints for now
@@ -33,6 +36,7 @@
 #include "H48cAccel.h"
 #include "Hm55bCompass.h"
 #include "SensorSuite.h"
+#include "TiltFeedback.h"
 #include "DriveBase.h"
 #include "CommandHandlers.h"
 #include "RobotNode.h"
@@ -40,30 +44,43 @@
 // ---------- Settings ----------
 const uint8_t ROBOT_CODE = 42;          // 0 to 99, unique per robot
 static_assert(ROBOT_CODE <= fl::ROBOT_CODE_MAX, "ROBOT_CODE must be 0 to 99");
+const bool BUZZER_ON = true;            // false = tilt LEDs only, no sound
 
-const int RF_DATA_PIN = 2;
-const int RF_TR_PIN = 4;
-const int GYRO_DOUT_PIN = 7;
-const int GYRO_SCLK_PIN = 8;
-const int GYRO_CS_PIN = 12;
-const int ACCEL_CLK_PIN = A0;
-const int ACCEL_DIO_PIN = A1;
-const int ACCEL_CS_PIN = A2;
-const int COMPASS_DIO_PIN = A3;
-const int COMPASS_CLK_PIN = A4;
-const int COMPASS_EN_PIN = 3;
-const int LED_PIN = 13;
+// RF module
+const int RF_DATA_PIN = 5;
+const int RF_TR_PIN = 12;
+// H48C accelerometer
+const int H48C_CLK = 2;
+const int H48C_DIO = 3;
+const int H48C_CS = 4;
+// HM55B compass (Din and Dout tied together on one pin)
+const int HM55B_DIO = 6;
+const int HM55B_CLK = 7;
+const int HM55B_EN = 8;
+// LISY300 gyro
+const int GYRO_DOUT = 9;
+const int GYRO_SCLK = 10;
+const int GYRO_CS = 11;
+// Tilt LEDs and buzzer
+const int LED_LEFT = A0;
+const int LED_RIGHT = A1;
+const int LED_FRONT = A2;
+const int LED_BACK = A3;
+const int BUZZER_PIN = 13;
+// Link LED (active low) and random seed
+const int LINK_LED_PIN = A4;
 const int SEED_PIN = A5;
 
 // ---------- Objects ----------
 RfLink rfLink(RF_DATA_PIN, RF_TR_PIN);
 PacketRadio radio(rfLink);
-Indicator linkLed(LED_PIN);
+Indicator linkLed(LINK_LED_PIN, true);
 
-LisyGyro gyro(GYRO_DOUT_PIN, GYRO_SCLK_PIN, GYRO_CS_PIN);
-H48cAccel accel(ACCEL_CLK_PIN, ACCEL_DIO_PIN, ACCEL_CS_PIN);
-Hm55bCompass compass(COMPASS_DIO_PIN, COMPASS_CLK_PIN, COMPASS_EN_PIN);
+LisyGyro gyro(GYRO_DOUT, GYRO_SCLK, GYRO_CS);
+H48cAccel accel(H48C_CLK, H48C_DIO, H48C_CS);
+Hm55bCompass compass(HM55B_DIO, HM55B_CLK, HM55B_EN);
 SensorSuite sensors(gyro, accel, compass);
+TiltFeedback tilt(LED_LEFT, LED_RIGHT, LED_FRONT, LED_BACK, BUZZER_PIN, BUZZER_ON);
 
 DebugDrive drive;                        // replace with your motor class
 
@@ -90,10 +107,11 @@ void setup() {
   dispatcher.add(&moveHandler);
   dispatcher.add(&zeroGyroHandler);
 
-  node.begin();
+  node.begin();                          // starts the radio (and its 16 kHz timer)
+  tilt.begin();                          // LEDs and buzzer run on that timer
 }
 
 void loop() {
-  sensors.update();
+  if (sensors.update()) tilt.update(accel.x(), accel.y());
   node.update();
 }

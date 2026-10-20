@@ -19,10 +19,12 @@ public:
 
   void calibrate() { gyro_.calibrate(); }   // keep the robot still
 
-  void update() {
+  // Returns true when the accelerometer took a new reading.
+  bool update() {
     gyro_.update();
-    accel_.update();
+    bool newAccel = accel_.update();
     compass_.update();
+    return newAccel;
   }
 
   // Fills the sensor fields; the link fields (ack, flags, uptime) are added by RobotNode.
@@ -37,6 +39,7 @@ public:
   }
 
   LisyGyro &gyro() { return gyro_; }
+  const H48cAccel &accel() const { return accel_; }
 
 private:
   static int16_t clamp16(float v) {

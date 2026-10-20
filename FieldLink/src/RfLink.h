@@ -29,6 +29,11 @@ public:
 
   void onTick();                   // called by the Timer2 interrupt only
 
+  // Optional extra function run on every 16 kHz tick (for example LED PWM or a buzzer).
+  // Keep it very short: it runs inside the interrupt.
+  typedef void (*TickHook)();
+  static void setTickHook(TickHook hook);
+
 private:
   static const uint8_t BUF_SIZE = 64;           // power of two
   static const uint8_t BUF_MASK = BUF_SIZE - 1;

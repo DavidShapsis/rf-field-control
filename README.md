@@ -33,7 +33,8 @@ The code is object-oriented so new movements can be added as small classes witho
 | Parallax LISY300 gyro | | 1 |
 | Hitachi H48C 3-axis accelerometer | | 1 |
 | Hitachi HM55B compass | | 1 |
-| LEDs + 220 to 330 ohm resistors (optional) | 2 | |
+| LEDs + 220 to 330 ohm resistors | 2 (optional) | 4 tilt + 1 link (optional) |
+| Piezo buzzer | | 1 |
 
 ## Wiring
 
@@ -54,23 +55,25 @@ The LEDs are wired 5V, resistor, LED anode, LED cathode, then the Arduino pin, s
 
 | Module pin | Arduino pin |
 |---|---|
-| RF DATA | D2 |
-| RF T/R | D4 |
+| RF DATA | D5 |
+| RF T/R | D12 |
 | RF VIN / GND | 5V / GND |
 | RF PDN, RSSI | not connected |
-| LISY300 DOUT / SCLK / CS | D7 / D8 / D12 |
+| H48C CLK / DIO / CS | D2 / D3 / D4 |
+| HM55B DIN + DOUT (tied together) | D6 |
+| HM55B CLK / EN | D7 / D8 |
+| LISY300 DOUT / SCLK / CS | D9 / D10 / D11 |
 | LISY300 ST | GND |
-| H48C CLK / DIO / CS | A0 / A1 / A2 |
-| HM55B DIN + DOUT (tied together) | A3 |
-| HM55B CLK / EN | A4 / D3 |
 | All sensor VDD / GND | 5V / GND |
-| Status LED | built-in LED on D13 |
+| Tilt LEDs left / right / front / back | A0 / A1 / A2 / A3 |
+| Buzzer | D13 |
+| Link LED (optional, active low) | A4 |
 
 > [!TIP]
 > Leave A5 unconnected: its noise seeds the random time slot used for pairing.
 
-> [!TIP]
-> Pins free for motors: PWM on **5, 6, 9, 10**, plus digital pin 11. Pins 3 and 11 cannot do PWM because the radio uses Timer2.
+> [!NOTE]
+> The tilt LEDs and buzzer are a testing aid carried over from the earlier motion sketch: the LEDs brighten in the direction the robot tilts and the buzzer pitch rises with total tilt. This layout uses every PWM pin, so the sensor pins will move when motors are added. Set `BUZZER_ON = false` in `receive.ino` to silence the buzzer.
 
 ## Repository layout
 
@@ -94,9 +97,9 @@ rf-field-control/
 3. **Each robot:** open `receive/receive.ino`, set `ROBOT_CODE` to a number from 0 to 99 (different for every robot), upload.
 4. Open the controller's Serial Monitor at **115200 baud** with line ending **Newline**.
 5. Power on a robot and keep it still for about 1.2 seconds while the gyro calibrates. The controller prints:
-```
+   ```
    [PAIR] Robot 42 wants to pair. Type: pair 42   (or: deny 42)
-```
+   ```
    Type `pair 42`.
 
 ## Controller commands
@@ -164,7 +167,7 @@ Robots use their code (0 to 99) as their address, controllers use 100 to 199, an
 
 | Class / file | Role |
 |---|---|
-| `RfLink` | Half-duplex software serial on Timer2, T/R switching |
+| `RfLink` | Half-duplex software serial on Timer2, T/R switching, optional tick hook for LED PWM and buzzer |
 | `PacketRadio` | Sends and receives whole packets |
 | `FrameCodec`, `FrameDecoder` | Framing, CRC-8, noise-tolerant decoding |
 | `Protocol.h` | Message types, addresses, timing, `CommandFrame`, `StatusReport` |
@@ -189,6 +192,7 @@ Robots use their code (0 to 99) as their address, controllers use 100 to 199, an
 |---|---|
 | `RobotNode` | Pairing, answering polls, failsafe |
 | `SensorSuite` | Gyro + accelerometer + compass, packed into each reply |
+| `TiltFeedback` | Tilt LEDs and buzzer (testing aid) |
 | `LisyGyro`, `H48cAccel`, `Hm55bCompass` | Sensor drivers (the compass is read without blocking) |
 | `CommandDispatcher`, `CommandHandler` | Runs each command once by type |
 | `DriveBase` | Motor interface. `DebugDrive` only prints until real motors are added. |

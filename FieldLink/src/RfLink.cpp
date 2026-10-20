@@ -2,6 +2,13 @@
 #include <avr/interrupt.h>
 
 static RfLink *activeLink = nullptr;
+static volatile RfLink::TickHook tickHook = nullptr;
+
+void RfLink::setTickHook(TickHook hook) {
+  noInterrupts();
+  tickHook = hook;
+  interrupts();
+}
 
 RfLink::RfLink(uint8_t dataPin, uint8_t trPin, bool inverted)
   : dataPin_(dataPin), trPin_(trPin), inverted_(inverted) {}
@@ -165,4 +172,5 @@ void RfLink::onTick() {
 
 ISR(TIMER2_COMPA_vect) {
   if (activeLink) activeLink->onTick();
+  if (tickHook) tickHook();
 }
