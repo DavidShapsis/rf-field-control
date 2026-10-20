@@ -1,5 +1,15 @@
 # rf-field-control
 
+![Status](https://img.shields.io/badge/status-active%20development-brightgreen)
+![Updated](https://img.shields.io/badge/updated-October%202026-blue)
+![Board](https://img.shields.io/badge/board-Arduino%20Uno-00979D?logo=arduino&logoColor=white)
+![Language](https://img.shields.io/badge/language-C%2B%2B-00599C?logo=cplusplus&logoColor=white)
+![Radio](https://img.shields.io/badge/radio-433%20MHz-orange)
+![Robots](https://img.shields.io/badge/robots-up%20to%204-purple)
+
+> [!NOTE]
+> This project is under active development and is being updated regularly as of October 2026. Features, wiring and the radio protocol may change between versions.
+
 A two-way 433 MHz radio system for running robots on a course. One Arduino Uno is the **field controller**: it pairs with up to 4 robots, sends them commands typed into the Serial Monitor, and shows a live dashboard of each robot's gyro, accelerometer and compass data. Each robot is an Arduino Uno that runs the commands and reports its sensors back.
 
 The code is object-oriented so new movements can be added as small classes without touching the radio or pairing logic.
@@ -56,9 +66,11 @@ The LEDs are wired 5V, resistor, LED anode, LED cathode, then the Arduino pin, s
 | All sensor VDD / GND | 5V / GND |
 | Status LED | built-in LED on D13 |
 
-Leave A5 unconnected: its noise seeds the random time slot used for pairing.
+> [!TIP]
+> Leave A5 unconnected: its noise seeds the random time slot used for pairing.
 
-Pins free for motors: PWM on **5, 6, 9, 10**, plus digital pin 11. Pins 3 and 11 cannot do PWM because the radio uses Timer2.
+> [!TIP]
+> Pins free for motors: PWM on **5, 6, 9, 10**, plus digital pin 11. Pins 3 and 11 cannot do PWM because the radio uses Timer2.
 
 ## Repository layout
 
@@ -74,14 +86,17 @@ rf-field-control/
 
 ## Setup
 
+> [!IMPORTANT]
+> Always upload the controller and every robot from the same version of this repo. Older and newer versions cannot talk to each other.
+
 1. **Install the library once.** In the Arduino IDE: *Sketch > Include Library > Add .ZIP Library* and pick `FieldLink.zip`. (Or copy the `FieldLink` folder into `Documents/Arduino/libraries`.)
 2. **Controller:** open `data_and_transmit/data_and_transmit.ino`, select *Arduino Uno*, upload.
 3. **Each robot:** open `receive/receive.ino`, set `ROBOT_CODE` to a number from 0 to 99 (different for every robot), upload.
 4. Open the controller's Serial Monitor at **115200 baud** with line ending **Newline**.
 5. Power on a robot and keep it still for about 1.2 seconds while the gyro calibrates. The controller prints:
-   ```
+```
    [PAIR] Robot 42 wants to pair. Type: pair 42   (or: deny 42)
-   ```
+```
    Type `pair 42`.
 
 ## Controller commands
@@ -189,9 +204,13 @@ To drive real motors, write a class that inherits from `DriveBase` and implement
 
 ## Notes
 
-- `tone()` and PWM on pins 3 and 11 do not work on either board, because the radio uses Timer2.
+> [!WARNING]
+> `tone()` and PWM on pins 3 and 11 do not work on either board, because the radio uses Timer2.
+
+> [!WARNING]
+> Any change to `FieldLink` must be uploaded to the controller **and** every robot, or they stop understanding each other.
+
 - The compass heading is uncalibrated, and the gyro angle drifts over time. Use `zero` to reset it.
-- Any change to `FieldLink` must be uploaded to the controller **and** every robot, or they stop understanding each other.
 - If you run more than one controller, give each a different `CONTROLLER_ID` (100 to 199) in `data_and_transmit.ino`.
 
 ## Author
