@@ -17,7 +17,7 @@ public:
     compass_.begin();
   }
 
-  void calibrate() { gyro_.calibrate(); }   // keep the robot still
+  void startCalibration() { gyro_.startCalibration(); }   // keep the robot still
 
   // Returns true when the accelerometer took a new reading.
   bool update() {

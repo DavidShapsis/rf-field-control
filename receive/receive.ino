@@ -91,6 +91,8 @@ CommandDispatcher dispatcher;
 
 RobotNode node(ROBOT_CODE, radio, dispatcher, sensors, drive, linkLed);
 
+void printGyroReport();
+
 void setup() {
   Serial.begin(115200);
   randomSeed(analogRead(SEED_PIN) ^ ((unsigned long)ROBOT_CODE << 8) ^ micros());
@@ -98,10 +100,6 @@ void setup() {
   linkLed.begin();
   drive.begin();
   sensors.begin();
-  Serial.println(F("Calibrating gyro, keep the robot still..."));
-  sensors.calibrate();
-  Serial.print(F("Gyro offset: "));
-  Serial.println(gyro.offset());
 
   dispatcher.add(&stopHandler);
   dispatcher.add(&moveHandler);
@@ -109,9 +107,35 @@ void setup() {
 
   node.begin();                          // starts the radio (and its 16 kHz timer)
   tilt.begin();                          // LEDs and buzzer run on that timer
+
+  // The gyro calibrates in the background from its normal readings, 3 s after boot, for 2 s.
+  // Readings in the first second or so after boot were wrong on the real gyro.
+  sensors.startCalibration();
+  Serial.println(F("Gyro calibrates 3 to 5 s after boot: keep the robot still."));
 }
 
 void loop() {
+  gyro.setStationary(!drive.moving());   // re-zero the gyro only while not driving
   if (sensors.update()) tilt.update(accel.x(), accel.y());
+  if (gyro.takeCalibrationReport()) printGyroReport();
   node.update();
+}
+
+void printGyroReport() {
+  Serial.print(F("Gyro offset: "));
+  Serial.print(gyro.offset());
+  Serial.print(F("   (averaged "));
+  Serial.print(gyro.calUsed());
+  Serial.print('/');
+  Serial.print(gyro.calFrames());
+  Serial.print(F(" readings, range "));
+  Serial.print(gyro.calMin());
+  Serial.print(F(" to "));
+  Serial.print(gyro.calMax());
+  Serial.println(')');
+  if (!gyro.calibrated()) {
+    Serial.println(F("WARNING: gyro readings too scattered to calibrate. Keep it still, check its wiring."));
+  } else if (gyro.offset() < 400 || gyro.offset() > 620) {
+    Serial.println(F("WARNING: gyro offset should be about 500 at rest. Check the gyro wiring."));
+  }
 }
