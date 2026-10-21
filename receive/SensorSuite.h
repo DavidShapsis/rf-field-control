@@ -29,7 +29,7 @@ public:
 
   // Fills the sensor fields; the link fields (ack, flags, uptime) are added by RobotNode.
   void fill(fl::StatusReport &s) const {
-    s.rate10 = clamp16(gyro_.rateDps() * 10.0);
+    s.rate10 = clamp16(gyro_.takeAverageRate() * 10.0);   // average since the last report
     s.gyroAngle10 = clamp16(gyro_.angle() * 10.0);
     s.ax = clamp16(accel_.x() * 1000.0);
     s.ay = clamp16(accel_.y() * 1000.0);

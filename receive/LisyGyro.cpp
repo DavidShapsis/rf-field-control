@@ -54,8 +54,12 @@ void LisyGyro::calFinish() {
   rate_ = 0;
   angle_ = 0;
   batchN_ = 0;
+  runSign_ = 0;
+  pending_ = false;
+  travelDeg_ = 0;
   lastMicros_ = micros();
   batchStart_ = lastMicros_;
+  travelStartUs_ = lastMicros_;
 }
 
 // Median of a small array (sorted in place).
@@ -121,7 +125,46 @@ void LisyGyro::update() {
   // Robot standing still and gyro close to zero: let the offset follow the resting value.
   if (stationary_ && fabs(diff) <= REZERO_BAND) offsetF_ += REZERO_RATE * diff;
 
-  rate_ = (fabs(diff) <= DEADBAND) ? 0 : diff * DPS_PER_COUNT;
-  angle_ += rate_ * (now - lastMicros_) / 1000000.0;
+  float dt = (now - lastMicros_) / 1000000.0;
   lastMicros_ = now;
+
+  if (fabs(diff) <= DEADBAND) {           // nothing happening
+    rate_ = 0;
+    runSign_ = 0;
+    pending_ = false;
+    return;
+  }
+  float r = diff * DPS_PER_COUNT;
+  int8_t sign = (r > 0) ? 1 : -1;
+  float deg = r * dt;
+
+  if (runSign_ == sign) {                 // turn already confirmed: keep adding
+    addDegrees(deg);
+    rate_ = r;
+  } else if (pending_ && pendingSign_ == sign) {   // second batch in a row: it's a real turn
+    addDegrees(pendingDeg_ + deg);        // include the first batch too
+    pending_ = false;
+    runSign_ = sign;
+    rate_ = r;
+  } else {                                // first batch over the band: wait for confirmation
+    pending_ = true;
+    pendingSign_ = sign;
+    pendingDeg_ = deg;
+    runSign_ = 0;
+    rate_ = 0;
+  }
+}
+
+void LisyGyro::addDegrees(float deg) {
+  angle_ += deg;
+  travelDeg_ += deg;
+}
+
+float LisyGyro::takeAverageRate() {
+  unsigned long now = micros();
+  float dt = (now - travelStartUs_) / 1000000.0;
+  float r = (dt > 0.001) ? travelDeg_ / dt : 0;
+  travelDeg_ = 0;
+  travelStartUs_ = now;
+  return r;
 }

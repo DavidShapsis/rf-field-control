@@ -7,6 +7,9 @@
 // Running: readings are grouped into 20 ms batches and the median of each batch is used, so the
 // scattered readings seen on the real gyro can't bias the rate. A +/-3 count zero band and slow
 // re-zeroing while the robot is known to be still stop the angle from drifting at rest.
+// Spike rejection: a rate only counts once two batches in a row agree on its direction. Single
+// 20 ms spikes (about -21 dps, seen regularly on the real robot at rest) are ignored; a real turn
+// lasts many batches and loses nothing because the first batch is added once the second confirms.
 #pragma once
 #include <Arduino.h>
 
@@ -23,7 +26,10 @@ public:
   bool takeCalibrationReport();            // true once, right after a calibration finishes
   void update();                           // call often; integrates the angle
 
-  float rateDps() const { return rate_; }  // positive = counter-clockwise
+  float rateDps() const { return rate_; }  // latest confirmed rate; positive = counter-clockwise
+  // Average rate since the last call (degrees actually added to the angle / time). This is what
+  // the robot reports, so the dashboard rate matches the angle instead of one 20 ms snapshot.
+  float takeAverageRate();
   float angle() const { return angle_; }   // degrees turned since boot or the last zero
   void zeroAngle() { angle_ = 0; }
   // Tell the gyro whether the robot is commanded to stand still. While it is, and the gyro reads
@@ -53,12 +59,19 @@ private:
 
   int readRaw();
   void calFinish();
+  void addDegrees(float deg);
 
   uint8_t dout_, sclk_, cs_;
   float offsetF_ = 512;
   float rate_ = 0, angle_ = 0;
   unsigned long lastMicros_ = 0;
   bool stationary_ = true;
+  int8_t runSign_ = 0;                     // direction of the confirmed turn in progress, 0 = none
+  bool pending_ = false;                   // one batch over the zero band, waiting for a second
+  int8_t pendingSign_ = 0;
+  float pendingDeg_ = 0;                   // degrees that batch would add
+  float travelDeg_ = 0;                    // degrees added since the last takeAverageRate()
+  unsigned long travelStartUs_ = 0;
   int batch_[BATCH_MAX];
   uint8_t batchN_ = 0;
   unsigned long batchStart_ = 0;
