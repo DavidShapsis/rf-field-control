@@ -34,6 +34,7 @@ The code is object-oriented so new movements can be added as small classes witho
 | Hitachi H48C 3-axis accelerometer | | 1 |
 | Hitachi HM55B compass | | 1 |
 | LEDs + 220 to 330 ohm resistors | 2 (optional) | 4 tilt + 1 link (optional) |
+| 10 µF capacitor | | 2 (gyro and RF module power pins) |
 | Piezo buzzer | | 1 |
 
 ## Wiring
@@ -68,6 +69,11 @@ The LEDs are wired 5V, resistor, LED anode, LED cathode, then the Arduino pin, s
 | Tilt LEDs left / right / front / back | A0 / A1 / A2 / A3 |
 | Buzzer | D13 |
 | Link LED (optional, active low) | A4 |
+| 10 µF capacitor | LISY300 pin 6 VIN (+) to pin 3 GND (−) |
+| 10 µF capacitor | RF module pin 2 VIN (+) to pin 1 GND (−) |
+
+> [!IMPORTANT]
+> The two 10 µF capacitors sit right at the gyro and RF module power pins (long leg / + to 5V). They cut the gyro noise caused by the radio switching on the same board.
 
 > [!TIP]
 > Leave A5 unconnected: its noise seeds the random time slot used for pairing.
@@ -96,7 +102,7 @@ rf-field-control/
 2. **Controller:** open `data_and_transmit/data_and_transmit.ino`, select *Arduino Uno*, upload.
 3. **Each robot:** open `receive/receive.ino`, set `ROBOT_CODE` to a number from 0 to 99 (different for every robot), upload.
 4. Open the controller's Serial Monitor at **115200 baud** with line ending **Newline**.
-5. Power on a robot and keep it still for about 1.2 seconds while the gyro calibrates. The controller prints:
+5. Power on a robot and keep it still for the first 5 seconds: the gyro calibrates 3 to 5 s after boot (the robot's own Serial Monitor prints `Gyro offset: ...` when done). The controller prints:
    ```
    [PAIR] Robot 42 wants to pair. Type: pair 42   (or: deny 42)
    ```
@@ -193,7 +199,7 @@ Robots use their code (0 to 99) as their address, controllers use 100 to 199, an
 | `RobotNode` | Pairing, answering polls, failsafe |
 | `SensorSuite` | Gyro + accelerometer + compass, packed into each reply |
 | `TiltFeedback` | Tilt LEDs and buzzer (testing aid) |
-| `LisyGyro`, `H48cAccel`, `Hm55bCompass` | Sensor drivers (the compass is read without blocking) |
+| `LisyGyro`, `H48cAccel`, `Hm55bCompass` | Sensor drivers. The compass is read without blocking; the gyro calibrates in the background after boot and filters its readings (batch median, spike rejection, re-zeroing at rest). |
 | `CommandDispatcher`, `CommandHandler` | Runs each command once by type |
 | `DriveBase` | Motor interface. `DebugDrive` only prints until real motors are added. |
 
@@ -214,7 +220,9 @@ To drive real motors, write a class that inherits from `DriveBase` and implement
 > [!WARNING]
 > Any change to `FieldLink` must be uploaded to the controller **and** every robot, or they stop understanding each other.
 
-- The compass heading is uncalibrated, and the gyro angle drifts over time. Use `zero` to reset it.
+- The compass heading is uncalibrated.
+- The gyro angle is an integrated value, so it slowly drifts over long periods. Use `zero <code>` before each run.
+- The dashboard gyro rate is the average since the last report, so it matches the angle.
 - If you run more than one controller, give each a different `CONTROLLER_ID` (100 to 199) in `data_and_transmit.ino`.
 
 ## Author
