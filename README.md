@@ -50,7 +50,7 @@ The code is object-oriented so new movements can be added as small classes witho
 | Receive LED (optional, active low) | A4 |
 | Transmit LED (optional, active low) | A5 |
 
-The LEDs are wired 5V, resistor, LED anode, LED cathode, then the Arduino pin, so the pin pulls LOW to light them.
+The LEDs are wired 5V, resistor, LED anode, LED cathode, then the Arduino pin, so the pin pulls LOW to light them. They flash when a packet is received and when one is sent.
 
 ### Robot
 
@@ -61,6 +61,7 @@ The LEDs are wired 5V, resistor, LED anode, LED cathode, then the Arduino pin, s
 | RF VIN / GND | 5V / GND |
 | RF PDN, RSSI | not connected |
 | H48C CLK / DIO / CS | D2 / D3 / D4 |
+| H48C 0G | not connected |
 | HM55B DIN + DOUT (tied together) | D6 |
 | HM55B CLK / EN | D7 / D8 |
 | LISY300 DOUT / SCLK / CS | D9 / D10 / D11 |
@@ -68,9 +69,34 @@ The LEDs are wired 5V, resistor, LED anode, LED cathode, then the Arduino pin, s
 | All sensor VDD / GND | 5V / GND |
 | Tilt LEDs left / right / front / back | A0 / A1 / A2 / A3 |
 | Buzzer | D13 |
-| Link LED (optional, active low) | A4 |
+| Link LED (optional, active low, 5V → resistor → LED → A4) | A4 |
 | 10 µF capacitor | LISY300 pin 6 VIN (+) to pin 3 GND (−) |
 | 10 µF capacitor | RF module pin 2 VIN (+) to pin 1 GND (−) |
+
+The link LED blinks slowly while not paired, stays on once paired, and flickers off briefly when a command arrives. The tilt LEDs are wired pin, resistor, LED, GND (active high).
+
+### Pin map by Arduino pin
+
+| Arduino pin | Controller | Robot |
+|---|---|---|
+| D0 / D1 | USB serial | USB serial |
+| D2 | free | H48C CLK |
+| D3 | free | H48C DIO |
+| D4 | free | H48C CS |
+| D5 | free | RF DATA |
+| D6 | free | HM55B DIN + DOUT |
+| D7 | free | HM55B CLK |
+| D8 | RF DATA | HM55B EN |
+| D9 | RF T/R | LISY300 DOUT |
+| D10 | free | LISY300 SCLK |
+| D11 | free | LISY300 CS |
+| D12 | free | RF T/R |
+| D13 | free | Buzzer |
+| A0 / A1 / A2 / A3 | free | Tilt LEDs left / right / front / back |
+| A4 | Receive LED | Link LED |
+| A5 | Transmit LED | leave unconnected (random seed) |
+
+The pin numbers are set as constants near the top of `data_and_transmit.ino` and `receive.ino`.
 
 > [!IMPORTANT]
 > The two 10 µF capacitors sit right at the gyro and RF module power pins (long leg / + to 5V). They cut the gyro noise caused by the radio switching on the same board.
@@ -100,7 +126,9 @@ rf-field-control/
 
 1. **Install the library once.** In the Arduino IDE: *Sketch > Include Library > Add .ZIP Library* and pick `FieldLink.zip`. (Or copy the `FieldLink` folder into `Documents/Arduino/libraries`.)
 2. **Controller:** open `data_and_transmit/data_and_transmit.ino`, select *Arduino Uno*, upload.
-3. **Each robot:** open `receive/receive.ino`, set `ROBOT_CODE` to a number from 0 to 99 (different for every robot), upload.
+3. **Each robot:** open `receive/receive.ino`, set `ROBOT_CODE` to a number from 0 to 99 (different for every robot), upload. Other settings at the top of the sketch:
+   - `BUZZER_ON`: `false` keeps the tilt LEDs but silences the buzzer.
+   - `GYRO_DEBUG`: `true` (the current default) prints gyro debug lines to the robot's own Serial Monitor (115200 baud). Set it to `false` for normal use.
 4. Open the controller's Serial Monitor at **115200 baud** with line ending **Newline**.
 5. Power on a robot and keep it still for the first 5 seconds: the gyro calibrates 3 to 5 s after boot (the robot's own Serial Monitor prints `Gyro offset: ...` when done). The controller prints:
    ```
@@ -123,14 +151,14 @@ rf-field-control/
 | `watch on\|off` | Print the status table every 2 s |
 | `help` | List commands |
 
-Example dashboard (values are illustrative):
+Example dashboard (values are illustrative). Tilt is worked out from the accelerometer, so unlike the gyro angle it does not drift: *side* is the X axis and *front* the Y axis, in degrees from level.
 
 ```
 ==== FIELD CONTROLLER 100 ====  t=24.0s  scan OFF  paired 2/4  radio tx 78 rx 75 bad 0
 ROBOT 07  ONLINE   moving    polls 51/0    seen  0.1s   cmd #2 move DONE
-     gyro   12.3 dps  angle  -45.0 deg   accel  0.01 -0.02  1.00 g   compass  26.6 NE
+     gyro   12.3 dps  angle  -45.0 deg   accel  0.01 -0.02  1.00 g   compass  26.6 NE   tilt side   0.6 front  -1.1 deg
 ROBOT 13  ONLINE   idle      polls 16/0    seen  0.3s   cmd #1 stop DONE
-     gyro    0.0 dps  angle    0.0 deg   accel  0.00  0.01  0.99 g   compass 271.5 W
+     gyro    0.0 dps  angle    0.0 deg   accel  0.00  0.01  0.99 g   compass 271.5 W   tilt side   0.0 front   0.6 deg
 Waiting to pair: 42   (pair <code> / deny <code>)
 ```
 
@@ -200,7 +228,7 @@ Robots use their code (0 to 99) as their address, controllers use 100 to 199, an
 | `RobotNode` | Pairing, answering polls, failsafe |
 | `SensorSuite` | Gyro + accelerometer + compass, packed into each reply |
 | `TiltFeedback` | Tilt LEDs and buzzer (testing aid) |
-| `LisyGyro`, `H48cAccel`, `Hm55bCompass` | Sensor drivers. The compass is read without blocking; the gyro calibrates in the background after boot and filters its readings (batch median, spike rejection, re-zeroing at rest). |
+| `LisyGyro`, `H48cAccel`, `Hm55bCompass` | Sensor drivers. The compass is read without blocking; the gyro calibrates in the background after boot and filters its readings (batch median, spike rejection, re-zeroing at rest, skipping the readings disturbed by the robot's own transmits). |
 | `CommandDispatcher`, `CommandHandler` | Runs each command once by type |
 | `DriveBase` | Motor interface. `DebugDrive` only prints until real motors are added. |
 
