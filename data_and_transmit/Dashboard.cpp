@@ -89,7 +89,7 @@ void Dashboard::printTable() {
 
 // Two lines per robot:
 //   ROBOT 42  ONLINE   moving    polls 58/0    seen 0.2s   cmd #2 move DONE
-//      gyro   12.3 dps  angle  -45.0 deg   accel  0.01 -0.02  1.00 g   compass 271.5 W
+//      gyro   12.3 dps  angle  -45.0 deg   accel  0.01 -0.02  1.00 g   compass 271.5 W   tilt side   0.6 front  -1.1 deg
 void Dashboard::printRobot(const RobotProxy &r, unsigned long now) {
   static const char *const names[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
   const fl::StatusReport &s = r.status();
@@ -145,6 +145,13 @@ void Dashboard::printRobot(const RobotProxy &r, unsigned long now) {
   } else {
     Serial.print(F("  --  (no reading)"));
   }
+  // Tilt from the accelerometer (does not drift): side = X axis, front = Y axis, from level.
+  float ax = s.ax, ay = s.ay, az = s.az;
+  Serial.print(F("   tilt side "));
+  Serial.print(dtostrf(atan2(ax, sqrt(ay * ay + az * az)) * 180.0 / PI, 5, 1, buf));
+  Serial.print(F(" front "));
+  Serial.print(dtostrf(atan2(ay, sqrt(ax * ax + az * az)) * 180.0 / PI, 5, 1, buf));
+  Serial.print(F(" deg"));
   Serial.println();
 }
 

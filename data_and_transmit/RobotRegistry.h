@@ -25,6 +25,8 @@ public:
 
   // Round-robin: the next robot in use after the last one returned, or nullptr if none.
   RobotProxy *next();
+  // Round-robin as next(), but only robots due for a poll (see RobotProxy::duePoll).
+  RobotProxy *nextDue(unsigned long now, unsigned long intervalMs);
 
 private:
   static const uint8_t MAGIC = 0x46;

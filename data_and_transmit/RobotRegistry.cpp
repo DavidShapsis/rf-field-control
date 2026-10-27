@@ -53,6 +53,17 @@ uint8_t RobotRegistry::count() const {
   return n;
 }
 
+RobotProxy *RobotRegistry::nextDue(unsigned long now, unsigned long intervalMs) {
+  for (uint8_t k = 0; k < CAPACITY; k++) {
+    uint8_t i = (cursor_ + 1 + k) % CAPACITY;
+    if (robots_[i].inUse() && robots_[i].duePoll(now, intervalMs)) {
+      cursor_ = i;
+      return &robots_[i];
+    }
+  }
+  return nullptr;
+}
+
 RobotProxy *RobotRegistry::next() {
   for (uint8_t k = 0; k < CAPACITY; k++) {
     cursor_ = (cursor_ + 1) % CAPACITY;

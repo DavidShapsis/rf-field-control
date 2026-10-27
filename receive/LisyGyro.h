@@ -35,6 +35,8 @@ public:
   // Tell the gyro whether the robot is commanded to stand still. While it is, and the gyro reads
   // close to zero, the offset slowly follows the resting value.
   void setStationary(bool still) { stationary_ = still; }
+  // Prints gyro debug lines to Serial (see printDebug in LisyGyro.cpp). For testing only.
+  void setDebug(bool on) { debug_ = on; }
 
   // Calibration report
   int offset() const { return (int)(offsetF_ + 0.5); }
@@ -49,8 +51,20 @@ private:
   static const int DEADBAND = 3;           // counts treated as zero (noise)
   static const unsigned long BATCH_US = 20000;   // readings per rate update: one 20 ms batch
   static const uint8_t BATCH_MAX = 32;
-  static const int REZERO_BAND = 6;        // re-zero only when this close to zero (about 6 dps)
-  static constexpr float REZERO_RATE = 0.02;     // per batch: follows over about 1 s
+  // While the robot is not commanded to drive, the offset follows any reading within this band.
+  // (An earlier "7 count shift" in the resting value turned out to be the transmit disturbance:
+  // -13 counts for 140 of every 250 ms averages about -7. With that time skipped, the resting
+  // value stayed within 0.3 counts for 90 s, so the band is back to 6.) Hand turns slower than
+  // about 6 dps with no drive command are partly absorbed; turns while driving never are.
+  static const int REZERO_BAND = 6;
+  static constexpr float REZERO_RATE = 0.01;     // per 20 ms batch: follows over about 2 s
+  // The robot's radio stops the loop for about 140 ms on every reply, so the gyro is not read
+  // then, and on the real robot the gyro reads about 13 counts low for about 90 ms after each
+  // transmit (measured with the debug output). A pause longer than GAP_US between readings is
+  // treated as a transmit: readings for SETTLE_US after it are skipped, and the whole pause is
+  // covered with the average of the confirmed rates before and after it (0 at rest).
+  static const unsigned long GAP_US = 20000;     // only a radio transmit stops the loop this long
+  static const unsigned long SETTLE_US = 150000; // measured recovery about 90 ms, plus margin
   static const uint8_t HIST_BINS = 64;     // 16 counts per bin
   static const int CAL_WINDOW = 32;        // average only readings within this of the typical one
 
@@ -60,6 +74,9 @@ private:
   int readRaw();
   void calFinish();
   void addDegrees(float deg);
+  void closeGap();
+  void processBatch(float diff, unsigned long now);
+  void printDebug(unsigned long ms, uint8_t n, int m, int lo, int hi, float diff, float added);
 
   uint8_t dout_, sclk_, cs_;
   float offsetF_ = 512;
@@ -75,6 +92,15 @@ private:
   int batch_[BATCH_MAX];
   uint8_t batchN_ = 0;
   unsigned long batchStart_ = 0;
+  unsigned long lastReadUs_ = 0;           // time of the previous reading, to spot pauses
+  unsigned long settleStartUs_ = 0;
+  bool settling_ = false;                  // skipping readings right after a pause
+  bool gapOpen_ = false;                   // a pause waiting for the rate after it
+  float gapSec_ = 0;
+  float gapRateBefore_ = 0;
+  bool afterPause_ = false;                // next batch is the first after a pause (debug)
+  bool debug_ = false;
+  unsigned long debugLastMs_ = 0;
 
   CalState calState_ = CAL_DONE;
   bool calibrated_ = false, calReport_ = false;

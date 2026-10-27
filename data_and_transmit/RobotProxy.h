@@ -36,6 +36,14 @@ public:
   const fl::CommandFrame &command() const { return cmd_; }
   void onCommandSent() { tries_++; }
 
+  // ---- poll pacing ----
+  // Every reply the robot transmits disturbs its gyro for a moment, so a robot is only polled
+  // every intervalMs, or right away when a command is waiting.
+  void onPolled(unsigned long now) { lastPollMs_ = now; polledEver_ = true; }
+  bool duePoll(unsigned long now, unsigned long intervalMs) const {
+    return !polledEver_ || hasCommandToSend() || now - lastPollMs_ >= intervalMs;
+  }
+
   // ---- poll results (each returns at most one event, the most important) ----
   Event onStatus(const fl::StatusReport &s, unsigned long now) {
     Event ev = EV_NONE;
@@ -98,6 +106,8 @@ private:
   uint8_t misses_ = 0;
   fl::StatusReport status_;
   unsigned long okCount_ = 0, missCount_ = 0, lastHeardMs_ = 0;
+  unsigned long lastPollMs_ = 0;
+  bool polledEver_ = false;
 
   fl::CommandFrame cmd_;
   const __FlashStringHelper *label_ = nullptr;

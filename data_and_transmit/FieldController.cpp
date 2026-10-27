@@ -24,7 +24,7 @@ void FieldController::update() {
         startBeacon();
         return;
       }
-      RobotProxy *robot = registry_.next();
+      RobotProxy *robot = registry_.nextDue(now, POLL_INTERVAL_MS);
       if (robot) startPoll(*robot);
       break;
     }
@@ -62,6 +62,7 @@ void FieldController::startPoll(RobotProxy &robot) {
     robot.command().writeTo(p);
     robot.onCommandSent();
   }                                                  // otherwise len 0 = plain poll
+  robot.onPolled(millis());
   radio_.send(p);
   waitingFor_ = robot.code();
   deadline_ = millis() + fl::REPLY_TIMEOUT_MS;

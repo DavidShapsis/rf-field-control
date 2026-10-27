@@ -45,6 +45,7 @@
 const uint8_t ROBOT_CODE = 42;          // 0 to 99, unique per robot
 static_assert(ROBOT_CODE <= fl::ROBOT_CODE_MAX, "ROBOT_CODE must be 0 to 99");
 const bool BUZZER_ON = true;            // false = tilt LEDs only, no sound
+const bool GYRO_DEBUG = true;           // true = print gyro debug lines to this Serial Monitor
 
 // RF module
 const int RF_DATA_PIN = 5;
@@ -111,6 +112,7 @@ void setup() {
   // The gyro calibrates in the background from its normal readings, 3 s after boot, for 2 s.
   // Readings in the first second or so after boot were wrong on the real gyro.
   sensors.startCalibration();
+  gyro.setDebug(GYRO_DEBUG);
   Serial.println(F("Gyro calibrates 3 to 5 s after boot: keep the robot still."));
 }
 

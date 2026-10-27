@@ -16,6 +16,9 @@ public:
 class FieldController {
 public:
   static const unsigned long BEACON_INTERVAL_MS = 3000;
+  // Each robot is polled about this often (right away when a command is waiting). Each reply
+  // the robot sends disturbs its gyro for about 0.25 s, so polling faster blinds the gyro.
+  static const unsigned long POLL_INTERVAL_MS = 1000;
 
   FieldController(uint8_t id, PacketRadio &radio, RobotRegistry &registry, PairingManager &pairing)
     : id_(id), radio_(radio), registry_(registry), pairing_(pairing) {}

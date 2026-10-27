@@ -18,9 +18,9 @@ The code is object-oriented so new movements can be added as small classes witho
 
 - **Pairing with approval.** Each robot has a two-digit code. A new robot announces itself, and the controller only accepts it after the operator types `pair <code>`.
 - **Pairings survive resets.** Approved robots are saved in the controller's EEPROM and reconnect automatically after either side reboots.
-- **Up to 4 robots** on one channel. The controller polls one robot at a time, so robots never transmit over each other.
+- **Up to 4 robots** on one channel. The controller polls one robot at a time, so robots never transmit over each other. Each robot is polled about once per second, or right away when a command is waiting.
 - **Reliable commands.** Every command carries a sequence number. The robot confirms it in its next reply, the controller retries up to 5 times, and the robot runs each command only once even if it is received twice.
-- **Live telemetry.** Gyro rate and angle, 3-axis acceleration and compass heading from every robot, about once per second each with 4 robots.
+- **Live telemetry.** Gyro rate and angle, 3-axis acceleration, tilt angles and compass heading from every robot, about once per second each.
 - **Failsafe.** A robot stops its motors if it has not heard from the controller for 3 seconds.
 - **Noise-tolerant framing.** CRC-8 checked packets, and a decoder that finds real packets inside receiver noise.
 
@@ -161,6 +161,7 @@ Robots use their code (0 to 99) as their address, controllers use 100 to 199, an
 | Timing | Value |
 |---|---|
 | One poll and reply | about 220 ms |
+| Each robot polled | about every 1 s, or right away when a command is waiting |
 | Beacon (while scanning) | every 3 s, 655 ms listen window |
 | Controller waits for a reply | 260 ms |
 | Robot marked offline after | 3 missed polls |
@@ -223,6 +224,7 @@ To drive real motors, write a class that inherits from `DriveBase` and implement
 - The compass heading is uncalibrated.
 - The gyro angle is an integrated value, so it slowly drifts over long periods. Use `zero <code>` before each run.
 - The dashboard gyro rate is the average since the last report, so it matches the angle.
+- Each reply the robot transmits disturbs its gyro: it cannot be read during the transmit (about 140 ms) and reads about 13 counts low for about 90 ms after it. The gyro skips that time and fills it with the average turn rate before and after, so the angle holds still at rest, but a turn that starts or stops then can read a few degrees off. This is why each robot is only polled about once per second; sending commands many times per second would leave the gyro almost no clean readings.
 - If you run more than one controller, give each a different `CONTROLLER_ID` (100 to 199) in `data_and_transmit.ino`.
 
 ## Author

@@ -56,6 +56,7 @@ void LisyGyro::calFinish() {
   batchN_ = 0;
   runSign_ = 0;
   pending_ = false;
+  gapOpen_ = false;
   travelDeg_ = 0;
   lastMicros_ = micros();
   batchStart_ = lastMicros_;
@@ -75,7 +76,34 @@ static int medianOf(int *v, uint8_t n) {
 
 void LisyGyro::update() {
   int v = readRaw();
+  unsigned long nowUs = micros();
   unsigned long nowMs = millis();
+
+  // Pause since the previous reading (the radio blocks the loop while it transmits): skip the
+  // readings for SETTLE_US, then cover the whole pause with the average rate across it.
+  if (nowUs - lastReadUs_ > GAP_US) {
+    settling_ = true;
+    settleStartUs_ = nowUs;
+  }
+  lastReadUs_ = nowUs;
+  if (settling_) {
+    if (nowUs - settleStartUs_ < SETTLE_US) return;
+    settling_ = false;
+    if (calState_ == CAL_DONE) {
+      // The pause is added once the rate after it is known (see closeGap): averaging the rates
+      // before and after it splits the difference when a turn starts or stops during the pause.
+      closeGap();                         // an earlier pause still open: settle it first
+      gapOpen_ = true;
+      gapRateBefore_ = rate_;
+      gapSec_ = 0;
+      gapSec_ += (nowUs - lastMicros_) / 1000000.0;
+      lastMicros_ = nowUs;
+      batchN_ = 0;
+      batchStart_ = nowUs;
+      pending_ = false;
+      afterPause_ = true;
+    }
+  }
 
   if (calState_ != CAL_DONE) {
     if (calState_ == CAL_WAITING) {
@@ -117,11 +145,20 @@ void LisyGyro::update() {
   unsigned long now = micros();
   if (now - batchStart_ < BATCH_US) return;
 
-  int m = medianOf(batch_, batchN_);
+  uint8_t n = batchN_;
+  int m = medianOf(batch_, n);            // also sorts the batch: batch_[0] = lowest
+  int lo = batch_[0], hi = batch_[n - 1];
   batchN_ = 0;
   batchStart_ = now;
 
+  float before = angle_;
   float diff = m - offsetF_;
+  processBatch(diff, now);
+  if (debug_) printDebug(nowMs, n, m, lo, hi, diff, angle_ - before);
+  afterPause_ = false;
+}
+
+void LisyGyro::processBatch(float diff, unsigned long now) {
   // Robot standing still and gyro close to zero: let the offset follow the resting value.
   if (stationary_ && fabs(diff) <= REZERO_BAND) offsetF_ += REZERO_RATE * diff;
 
@@ -132,6 +169,7 @@ void LisyGyro::update() {
     rate_ = 0;
     runSign_ = 0;
     pending_ = false;
+    closeGap();
     return;
   }
   float r = diff * DPS_PER_COUNT;
@@ -141,11 +179,13 @@ void LisyGyro::update() {
   if (runSign_ == sign) {                 // turn already confirmed: keep adding
     addDegrees(deg);
     rate_ = r;
+    closeGap();
   } else if (pending_ && pendingSign_ == sign) {   // second batch in a row: it's a real turn
     addDegrees(pendingDeg_ + deg);        // include the first batch too
     pending_ = false;
     runSign_ = sign;
     rate_ = r;
+    closeGap();
   } else {                                // first batch over the band: wait for confirmation
     pending_ = true;
     pendingSign_ = sign;
@@ -153,6 +193,49 @@ void LisyGyro::update() {
     runSign_ = 0;
     rate_ = 0;
   }
+}
+
+// Debug line, only for batches that are not plain rest (outside the zero band, or that changed
+// the angle), plus one status line per second. Kept short so Serial never blocks the loop.
+//   g <ms> <readings> <median> <lowest> <highest> <counts from rest> <deg added> [P]
+//   (P = first batch after a radio pause)
+void LisyGyro::printDebug(unsigned long ms, uint8_t n, int m, int lo, int hi, float diff,
+                          float added) {
+  if (fabs(diff) > DEADBAND || added != 0) {
+    Serial.print(F("g "));
+    Serial.print(ms);
+    Serial.print(' ');
+    Serial.print(n);
+    Serial.print(' ');
+    Serial.print(m);
+    Serial.print(' ');
+    Serial.print(lo);
+    Serial.print(' ');
+    Serial.print(hi);
+    Serial.print(' ');
+    Serial.print(diff, 1);
+    Serial.print(' ');
+    Serial.print(added, 2);
+    if (afterPause_) Serial.print(F(" P"));
+    Serial.println();
+  }
+  if (ms - debugLastMs_ >= 1000) {
+    debugLastMs_ = ms;
+    Serial.print(F("s "));
+    Serial.print(ms);
+    Serial.print(F(" angle "));
+    Serial.print(angle_, 1);
+    Serial.print(F(" rest "));
+    Serial.println(offsetF_, 1);
+  }
+}
+
+// Adds a pause once the confirmed rate after it is known: the average of the rates before and
+// after it (both 0 at rest, so a pause at rest adds nothing).
+void LisyGyro::closeGap() {
+  if (!gapOpen_) return;
+  addDegrees((gapRateBefore_ + rate_) * 0.5 * gapSec_);
+  gapOpen_ = false;
 }
 
 void LisyGyro::addDegrees(float deg) {
